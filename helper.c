@@ -15,7 +15,7 @@ float minf(float a, float b)
 	return a < b ? a : b;
 }
 
-float max2f(float a, float b)
+float maxf(float a, float b)
 {
 	return a > b ? a : b;
 }

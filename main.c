@@ -63,7 +63,7 @@ typedef struct hunter_array
 	hunter** hunters;
 } hunterArray;
 
-void spawnStar(starArray* starArr, int windowXLength, int** occupancyCheck)
+void spawnStar(starArray* starArr, gameConfig* config, int** occupancyCheck)
 {
 	if(starArr->firstFreeIndex == starArr->capacity)
 	{
@@ -77,7 +77,7 @@ void spawnStar(starArray* starArr, int windowXLength, int** occupancyCheck)
 
 	star** stars = starArr->stars;
 	int starIndex = starArr->firstFreeIndex;
-	int randX = rand() % (windowXLength-2);
+	int randX = rand() % config->mapSizeX;
 	stars[starArr->firstFreeIndex]->x = randX + 1;
 	stars[starArr->firstFreeIndex]->y = 1;
 	stars[starArr->firstFreeIndex]->speed = (rand() % 1) + 1;
@@ -153,7 +153,7 @@ void updateHunterDirection(hunter* hunter, bird* playerBird)
 {
 	float xDiff = (float)playerBird->x - hunter->x;
 	float yDiff = (float)playerBird->y - hunter->y;
-	float maxDiff = max2f(abs(xDiff), abs(yDiff));
+	float maxDiff = maxf(abs(xDiff), abs(yDiff));
 	xDiff /= maxDiff;
 	yDiff /= maxDiff;
 
@@ -320,7 +320,7 @@ void updatePlayerBird(WINDOW* playWindow, gameState* state, gameConfig* config, 
 	occupancyCheck[playerBird->y][playerBird->x] = PLAYER;
 }
 
-bool gameLoop(WINDOW* playWindow, WINDOW* statsWindow, gameConfig* config, gameState* state, bird* playerBird, hunterArray* hunterArr, starArray* starArr, int mainXLength, int gameYSize, int** occupancyCheck)
+bool gameLoop(WINDOW* playWindow, WINDOW* statsWindow, gameConfig* config, gameState* state, bird* playerBird, hunterArray* hunterArr, starArray* starArr, int** occupancyCheck)
 {
     char action = wgetch(playWindow);
 	if(action == 'q') { return false; }
@@ -332,7 +332,7 @@ bool gameLoop(WINDOW* playWindow, WINDOW* statsWindow, gameConfig* config, gameS
 	if(state->starSpawnTimer <= 0)
 	{
 		state->starSpawnTimer = (rand() % (config->starsMaxSpawnTime - config->starsMinSpawnTime)) + config->starsMinSpawnTime;
-		spawnStar(starArr, mainXLength, occupancyCheck);
+		spawnStar(starArr, config, occupancyCheck);
 	}
 
 	updateStars(playWindow, starArr, config, occupancyCheck);
@@ -341,12 +341,12 @@ bool gameLoop(WINDOW* playWindow, WINDOW* statsWindow, gameConfig* config, gameS
 	wrefresh(playWindow);
 
 	state->frameCounter++;
-	paintStats(statsWindow, playerBird, state, starArr, action);
+	paintStats(statsWindow, playerBird, state, starArr, action, config->mapSizeY+2);
 	state->timer -= FRAME_TIME;
 	return true;
 }
 
-void paintStats(WINDOW* statsWindow, bird* playerBird, gameState* state, starArray* starArr, char action, int gameYSize, int mainYLength)
+void paintStats(WINDOW* statsWindow, bird* playerBird, gameState* state, starArray* starArr, char action, int gameYSize)
 {
 	mvwprintw(statsWindow,1,2,"Current Speed: %d", state->playerSpeed);
 	mvwprintw(statsWindow,2,2, "Life Force:  %d", playerBird->hp);
@@ -358,9 +358,9 @@ void paintStats(WINDOW* statsWindow, bird* playerBird, gameState* state, starArr
 	//float distance = isInRange(test->x, test->y, (float)test->xDest,  (float)test->yDest, 2);
 	//mvwprintw(statsWindow,mainYLength-gameYSize-5,2,"Distance: :           ");
 	//mvwprintw(statsWindow,mainYLength-gameYSize-5,2,"Distance: : %d", (int)distance);
-	mvwprintw(statsWindow,mainYLength-gameYSize-4,2,"Stars Capacity: %d", starArr->capacity);
-	mvwprintw(statsWindow,mainYLength-gameYSize-3,2,"Current Action: %d",(int)action);
-	mvwprintw(statsWindow,mainYLength-gameYSize-2,2,"Frame Count: %d",state->frameCounter);
+	mvwprintw(statsWindow,(gameYSize/2)-3,2,"Stars Capacity: %d", starArr->capacity);
+	mvwprintw(statsWindow,(gameYSize/2)-2,2,"Current Action: %d",(int)action);
+	mvwprintw(statsWindow,(gameYSize/2)-1,2,"Frame Count: %d",state->frameCounter);
 	wrefresh(statsWindow);
 }
 
@@ -458,7 +458,7 @@ int main(void)
 	}
 
     WINDOW* playWindow = subwin(parentWindow ,config->mapSizeY+2, config->mapSizeX+2, 0, 0);
-    WINDOW* statsWindow = subwin(parentWindow, mainYLength - config->mapSizeY+2, config->mapSizeX+2, config->mapSizeY+2, 0);
+    WINDOW* statsWindow = subwin(parentWindow, (config->mapSizeY/2)+2, config->mapSizeX+2, config->mapSizeY+2, 0);
     
     noecho();
 	curs_set(0);
@@ -494,7 +494,6 @@ int main(void)
 			config, state, 
 			playerBird, 
 			hunterArr, starArr, 
-			mainXLength, mainGameYSize, 
 			occupancyCheck);
 		clock_t end = clock();
     	int frameTime = (int)(end - start)/(CLOCKS_PER_SEC/1000000);
