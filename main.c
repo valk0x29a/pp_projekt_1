@@ -3,7 +3,8 @@
 #include<stdbool.h>
 #include<stdlib.h>
 #include "helper.c"
-#include "configReader.c"
+#include "config_reader.c"
+#include "collision.c"
 
 #define FRAME_TIME 50
 #define BORDER -1
@@ -54,6 +55,8 @@ typedef struct hunter
 	int xDest;
 	int yDest;
 	int bouncesLeft;
+	int height;
+	int width;
 } hunter;
 
 typedef struct hunter_array
@@ -127,18 +130,20 @@ void spawnHunter(hunterArray* hunterArr, bird* playerBird, gameConfig* config, i
 	}
 
 	hunter** hunters = hunterArr->hunters;
+	hunters[hunterIndex]->height = (rand() % 5) + 1;
+	hunters[hunterIndex]->width = (rand() % 5) + 1 ;
 	int randBorder = rand() % 4;
 	int spawnX = -1;
 	int spawnY = -1;
 	if(randBorder%2 == 0)
 	{
-		spawnX = randBorder == 0 ? 2 : config->mapSizeX;
-		spawnY = rand() % config->mapSizeY;
+		spawnX = randBorder == 0 ? 2 : config->mapSizeX-(hunters[hunterIndex]->width-1);
+		spawnY = rand() % config->mapSizeY-(hunters[hunterIndex]->height-1);
 	}
 	else
 	{
-		spawnX = rand() % config->mapSizeX;
-		spawnY = randBorder == 0 ? 2 : config->mapSizeY;
+		spawnX = rand() % config->mapSizeX-(hunters[hunterIndex]->width-1);
+		spawnY = randBorder == 0 ? 2 : config->mapSizeY-(hunters[hunterIndex]->height-1);
 	}
 	hunters[hunterIndex]->x = spawnX;
 	hunters[hunterIndex]->y = spawnY;
@@ -241,21 +246,33 @@ void updateHunters(WINDOW* playWindow, gameConfig* config, hunterArray* hunterAr
 
 		//if(occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] != PLAYER)
 		//{
-			mvwaddch(playWindow, currentHunter->y, currentHunter->x, ' ');
+			//mvwaddch(playWindow, currentHunter->y, currentHunter->x, ' ');
 		//}
 		// if(occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] == HUNTER)
 		// {
 		// 	occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] = EMPTY;
 		// }	
 
+		for(int y = 0; y < currentHunter->height; y++)
+		{
+			for(int x = 0; x < currentHunter->width; x++)
+			{
+				mvwaddch(playWindow, (int)currentHunter->y + y, (int)currentHunter->x + x, ' ');
+				if(occupancyCheck[(int)currentHunter->y + y][(int)currentHunter->x + x] == HUNTER)
+		 		{
+		 			occupancyCheck[(int)currentHunter->y + y][(int)currentHunter->x + x] = EMPTY;
+				}
+			}
+		}
+
 		currentHunter->x += currentHunter->xDirection * currentHunter->speed;
 		currentHunter->y += currentHunter->yDirection * currentHunter->speed;
 
-		currentHunter->x = boundf(currentHunter->x, 1, config->mapSizeX);
-		currentHunter->y = boundf(currentHunter->y, 1, config->mapSizeY);
+		currentHunter->x = boundf(currentHunter->x, 1, config->mapSizeX-(currentHunter->width-1));
+		currentHunter->y = boundf(currentHunter->y, 1, config->mapSizeY-(currentHunter->height-1));
 
-		if(currentHunter->x == 1 || currentHunter->x == config->mapSizeX
-			|| currentHunter->y == 1 || currentHunter->y == config->mapSizeY)
+		if(currentHunter->x == 1 || currentHunter->x == config->mapSizeX-(currentHunter->width-1)
+			|| currentHunter->y == 1 || currentHunter->y == config->mapSizeY-(currentHunter->height-1))
 		{
 			if(currentHunter->bouncesLeft <= 0) 
 			{
@@ -280,7 +297,14 @@ void updateHunters(WINDOW* playWindow, gameConfig* config, hunterArray* hunterAr
 		//char temp2 = (int)distance + '0';
 		//mvwaddch(playWindow, currentHunter->y-2, currentHunter->x, temp);
 		//mvwaddch(playWindow, currentHunter->y-1, currentHunter->x, distance + '0');
-		mvwaddch(playWindow, (int)currentHunter->y, (int)currentHunter->x, '@');
+		for(int y = 0; y < currentHunter->height; y++)
+		{
+			for(int x = 0; x < currentHunter->width; x++)
+			{
+				mvwaddch(playWindow, (int)currentHunter->y + y, (int)currentHunter->x + x, '@');
+		 		occupancyCheck[(int)currentHunter->y + y][(int)currentHunter->x + x] = HUNTER;
+			}
+		}
 		occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] = HUNTER;
 	}
 }
@@ -341,23 +365,25 @@ bool gameLoop(WINDOW* playWindow, WINDOW* statsWindow, gameConfig* config, gameS
 	wrefresh(playWindow);
 
 	state->frameCounter++;
-	paintStats(statsWindow, playerBird, state, starArr, action, config->mapSizeY+2);
+	paintStats(statsWindow, playerBird, state, config, starArr, action, config->mapSizeY+2);
 	state->timer -= FRAME_TIME;
 	return true;
 }
 
-void paintStats(WINDOW* statsWindow, bird* playerBird, gameState* state, starArray* starArr, char action, int gameYSize)
+void paintStats(WINDOW* statsWindow, bird* playerBird, gameState* state, gameConfig* config, starArray* starArr, char action, int gameYSize)
 {
 	mvwprintw(statsWindow,1,2,"Current Speed: %d", state->playerSpeed);
-	mvwprintw(statsWindow,2,2, "Life Force:  %d", playerBird->hp);
+	mvwprintw(statsWindow,2,2, "Life Force: %d", playerBird->hp);
 	mvwprintw(statsWindow,3,2,"Stars Left: %d", state->starsLeft);
 	time_t currentTime = time(0);
 	mvwprintw(statsWindow,4,2,"Time Left: %d", (int)state->timer/1000);
+	mvwprintw(statsWindow,5,2,"Username: %s", config->username);
 
 	//hunter* test = hunterArr->hunters[0];
 	//float distance = isInRange(test->x, test->y, (float)test->xDest,  (float)test->yDest, 2);
 	//mvwprintw(statsWindow,mainYLength-gameYSize-5,2,"Distance: :           ");
 	//mvwprintw(statsWindow,mainYLength-gameYSize-5,2,"Distance: : %d", (int)distance);
+	
 	mvwprintw(statsWindow,(gameYSize/2)-3,2,"Stars Capacity: %d", starArr->capacity);
 	mvwprintw(statsWindow,(gameYSize/2)-2,2,"Current Action: %d",(int)action);
 	mvwprintw(statsWindow,(gameYSize/2)-1,2,"Frame Count: %d",state->frameCounter);
@@ -435,42 +461,47 @@ gameState* initializeGameState(gameConfig* config)
 	return state;
 }
 
+WINDOW* initializeMainWindow(int* x, int* y)
+{
+	WINDOW* parentWindow = initscr();
+	noecho();
+	curs_set(0);
+	//cbreak() enable q to quit
+	getmaxyx(stdscr, *x, *y);
+	return parentWindow;
+}
+
+void setupChildWindows(WINDOW* parentWindow, gameConfig* config, WINDOW** playWindow, WINDOW** statsWindow)
+{
+	WINDOW* play = subwin(parentWindow ,config->mapSizeY+2, config->mapSizeX+2, 0, 0);
+    WINDOW* stats = subwin(parentWindow, (config->mapSizeY/2)+2, config->mapSizeX+2, config->mapSizeY+2, 0);
+    nodelay(play, true);
+	wborder(play, '*', '*', '*', '*', '*', '*', '*', '*');
+    box(stats, '|', '~');
+	*playWindow = play;
+	*statsWindow = stats;
+}
+
 int main(void)
 {
 	gameConfig* config = malloc(sizeof(gameConfig));
 	InitializeGameConfig(config, "config.ini");
 
-    WINDOW* parentWindow = initscr();
-    int mainXLength = -1;
+	int mainXLength = -1;
 	int mainYLength = -1;
-    getmaxyx(stdscr, mainYLength, mainXLength);
+    WINDOW* parentWindow = initializeMainWindow(&mainXLength, &mainYLength);
 
-	if(config->mapSizeX > mainXLength-2)
-	{
-		config->mapSizeX = mainXLength-2;
-	}
+	config->mapSizeX = min(config->mapSizeX, mainXLength-2);
 
     int mainGameYSize = 2*mainYLength/3;
+	config->mapSizeY = min(config->mapSizeY, mainGameYSize-2);
 
-	if(config->mapSizeY > mainGameYSize-2)
-	{
-		config->mapSizeY = mainGameYSize-2;
-	}
-
-    WINDOW* playWindow = subwin(parentWindow ,config->mapSizeY+2, config->mapSizeX+2, 0, 0);
-    WINDOW* statsWindow = subwin(parentWindow, (config->mapSizeY/2)+2, config->mapSizeX+2, config->mapSizeY+2, 0);
-    
-    noecho();
-	curs_set(0);
-	//cbreak() enable q to quit
-    nodelay(playWindow, true);
+    WINDOW* playWindow;
+    WINDOW* statsWindow;
+	setupChildWindows(parentWindow, config, &playWindow, &statsWindow);
+	refresh();
 
 	srand(time(NULL));
-    
-	wborder(playWindow, '*', '*', '*', '*', '*', '*', '*', '*');
-    box(statsWindow, '|', '~');
-    refresh();
-
 	int** occupancyCheck = initializeOccupancyMap(mainXLength, mainGameYSize);
 
 	bird* playerBird = initializePlayerBird(mainGameYSize, mainXLength);
@@ -488,17 +519,18 @@ int main(void)
 	bool quit = false;
 	while(!quit)
 	{
-		clock_t start = clock();
+		//clock_t start = clock();
 		quit = !gameLoop(playWindow, 
 			statsWindow, 
 			config, state, 
 			playerBird, 
 			hunterArr, starArr, 
 			occupancyCheck);
-		clock_t end = clock();
-    	int frameTime = (int)(end - start)/(CLOCKS_PER_SEC/1000000);
-		frameTime = 0;
-    	usleep((FRAME_TIME * 1000) - frameTime);
+		//clock_t end = clock();
+    	//int frameTime = (int)(end - start)/(CLOCKS_PER_SEC/1000);
+		//mvwprintw(statsWindow,(config->mapSizeY/2)-4,2,"frameTime: %d", frameTime);
+		//frameTime = 0;
+    	usleep((FRAME_TIME * 1000));// - frameTime);
 	}
 
 	getch();

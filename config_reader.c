@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include<stdbool.h>
+#include<string.h>
 #define LINE_LENGTH 256
 
 typedef struct gameConfig
 {
+    char* username;
     int mapSizeX;
     int mapSizeY;
     int starGoal;
@@ -38,6 +40,11 @@ int GetIntValue(char* string)
 
 void SetValue(gameConfig* config, char* name, char* value)
 {
+    if(areStringsSame(name, "username")) 
+    { 
+        config->username = malloc(LINE_LENGTH);
+        strcpy(config->username, value); 
+    }
     if(areStringsSame(name, "map_size_x")) { config->mapSizeX = GetIntValue(value); }
     if(areStringsSame(name, "map_size_y")) { config->mapSizeY = GetIntValue(value); }
     if(areStringsSame(name, "stars_goal")) { config->starGoal = GetIntValue(value); }
@@ -52,8 +59,8 @@ void ProcessLine(gameConfig* config, char* line, char* name, char* value)
 {
     for(int i = 0; i < LINE_LENGTH; i++)
     {
-        name[i] = ' ';
-        value[i] = ' ';
+        name[i] = '\n';
+        value[i] = '\n';
     }
 
     int i = 0;
@@ -69,6 +76,7 @@ void ProcessLine(gameConfig* config, char* line, char* name, char* value)
     i++;
     while(line[i])
     {
+        if(line[i] == ' ') { i++; continue; }
         if(line[i] == EOF || line[i] == '\n') { break; }
         value[j] = line[i];
         i++;
