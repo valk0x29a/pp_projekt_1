@@ -113,7 +113,7 @@ void despawnStarAt(starArray* starArr, int y, int x, int** occupancyCheck, WINDO
 	}
 }
 
-void spawnHunter(hunterArray* hunterArr, bird* playerBird, int windowXLength, int gameYSize, int** occupancyCheck)
+void spawnHunter(hunterArray* hunterArr, bird* playerBird, gameConfig* config, int** occupancyCheck)
 {
 	int hunterIndex = hunterArr->firstFreeIndex;
 	if(hunterArr->firstFreeIndex == hunterArr->capacity)
@@ -132,13 +132,13 @@ void spawnHunter(hunterArray* hunterArr, bird* playerBird, int windowXLength, in
 	int spawnY = -1;
 	if(randBorder%2 == 0)
 	{
-		spawnX = randBorder == 0 ? 2 : windowXLength-2;
-		spawnY = rand() % (gameYSize-2);
+		spawnX = randBorder == 0 ? 2 : config->mapSizeX;
+		spawnY = rand() % config->mapSizeY;
 	}
 	else
 	{
-		spawnX = rand() % (windowXLength-2);
-		spawnY = randBorder == 0 ? 2 : gameYSize-2;
+		spawnX = rand() % config->mapSizeX;
+		spawnY = randBorder == 0 ? 2 : config->mapSizeY;
 	}
 	hunters[hunterIndex]->x = spawnX;
 	hunters[hunterIndex]->y = spawnY;
@@ -199,36 +199,108 @@ void calculateInputs(char action, gameConfig* config, gameState* state, bird* pl
 				break;
 			case'o':
 				state->playerSpeed -= 1;
-				state->playerSpeed = max(*speed, config->playerMinSpeed);
+				state->playerSpeed = max(state->playerSpeed, config->playerMinSpeed);
 				break;
 			case'p':
 				state->playerSpeed += 1;
-				state->playerSpeed = min(*speed, config->playerMaxSpeed);
+				state->playerSpeed = min(state->playerSpeed, config->playerMaxSpeed);
 				break;
 		}
 }
 
-bool gameLoop(WINDOW* playWindow, WINDOW* statsWindow, gameConfig* config, gameState* state, bird* playerBird, hunterArray* hunterArr, starArray* starArr, int mainYLength, int gameYSize)
+void updateStars(WINDOW* playWindow, starArray* starArr, gameConfig* config, int** occupancyCheck)
 {
-	clock_t start = clock();
-    char action = wgetch(playWindow);
-	if(action == 'q') { return false; }
-	calculateInputs(action, config, playerBird, &speed);
+	for(int i = 0; i < starArr->firstFreeIndex; i++)
+	{
+		star* currentStar = starArr->stars[i];
+		if(occupancyCheck[currentStar->y][currentStar->x] == STAR)
+		{
+			occupancyCheck[currentStar->y][currentStar->x] = EMPTY;
+			mvwaddch(playWindow, currentStar->y, currentStar->x, ' ');
+		}
 
+		currentStar->y += currentStar->speed;
+		if(currentStar->y >= config->mapSizeY)
+		{
+			/*int randX = rand() % (mainXLength-2);
+			currentStar->x = randX + 1;
+			currentStar->y = 3;*/
+			deleteStar(starArr, i);
+			continue;
+		}
+		occupancyCheck[currentStar->y][currentStar->x] = STAR;
+		mvwaddch(playWindow, currentStar->y, currentStar->x, '*');
+	}
+}
+
+void updateHunters(WINDOW* playWindow, gameConfig* config, hunterArray* hunterArr, bird* playerBird, int** occupancyCheck)
+{
+	for(int i = 0; i < hunterArr->firstFreeIndex; i++)
+	{
+		hunter* currentHunter = hunterArr->hunters[i];
+
+		//if(occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] != PLAYER)
+		//{
+			mvwaddch(playWindow, currentHunter->y, currentHunter->x, ' ');
+		//}
+		// if(occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] == HUNTER)
+		// {
+		// 	occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] = EMPTY;
+		// }	
+
+		currentHunter->x += currentHunter->xDirection * currentHunter->speed;
+		currentHunter->y += currentHunter->yDirection * currentHunter->speed;
+
+		currentHunter->x = boundf(currentHunter->x, 1, config->mapSizeX);
+		currentHunter->y = boundf(currentHunter->y, 1, config->mapSizeY);
+
+		if(currentHunter->x == 1 || currentHunter->x == config->mapSizeX
+			|| currentHunter->y == 1 || currentHunter->y == config->mapSizeY)
+		{
+			if(currentHunter->bouncesLeft <= 0) 
+			{
+				int x = currentHunter->x;
+				int y = currentHunter->y;
+				deleteHunter(hunterArr, i); 
+				mvwaddch(playWindow, y, x,  ' ');
+				continue;
+			}
+			updateHunterDirection(currentHunter, playerBird);
+			currentHunter->bouncesLeft--;
+		}
+
+		// bool isInDistance = isInRange(currentHunter->x, currentHunter->y, 
+		// 						(float)currentHunter->xDest,  (float)currentHunter->yDest, 2);
+		// if(isInDistance)
+		// {
+		// 	//updateHunterDirection(currentHunter, playerBird);
+		// }
+
+		//char temp = (int)currentHunter->yDest + '0';
+		//char temp2 = (int)distance + '0';
+		//mvwaddch(playWindow, currentHunter->y-2, currentHunter->x, temp);
+		//mvwaddch(playWindow, currentHunter->y-1, currentHunter->x, distance + '0');
+		mvwaddch(playWindow, (int)currentHunter->y, (int)currentHunter->x, '@');
+		occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] = HUNTER;
+	}
+}
+
+void updatePlayerBird(WINDOW* playWindow, gameState* state, gameConfig* config, bird* playerBird, starArray* starArr, int** occupancyCheck)
+{
 	mvwaddch(playWindow, playerBird->y, playerBird->x, ' ');
-	playerBird->x += playerBird->xDirection * speed;
-	playerBird->y += playerBird->yDirection * speed;
+	playerBird->x += playerBird->xDirection * state->playerSpeed;
+	playerBird->y += playerBird->yDirection * state->playerSpeed;
 
-	playerBird->x = bound(playerBird->x, 1, mainXLength-2);
-	playerBird->y = bound(playerBird->y, 1, gameYSize-2);
+	playerBird->x = bound(playerBird->x, 1, config->mapSizeX);
+	playerBird->y = bound(playerBird->y, 1, config->mapSizeY);
 
-	if(playerBird->y == 1 || playerBird->y == gameYSize-2)
+	if(playerBird->y == 1 || playerBird->y == config->mapSizeY)
 	{
 		playerBird->yDirection *= -1;
 			//playerBird->hp--;
 	}
 
-	if(playerBird->x == 1 || playerBird->x == mainXLength-2)
+	if(playerBird->x == 1 || playerBird->x == config->mapSizeX)
 	{
 		playerBird->xDirection *= -1;
 			//playerBird->hp--;
@@ -246,95 +318,30 @@ bool gameLoop(WINDOW* playWindow, WINDOW* statsWindow, gameConfig* config, gameS
 	}
 	mvwaddch(playWindow, playerBird->y, playerBird->x, '%');
 	occupancyCheck[playerBird->y][playerBird->x] = PLAYER;
+}
 
-	state->starsSpawnTimer -= FRAME_TIME;
-	if(state->starsSpawnTimer <= 0)
+bool gameLoop(WINDOW* playWindow, WINDOW* statsWindow, gameConfig* config, gameState* state, bird* playerBird, hunterArray* hunterArr, starArray* starArr, int mainXLength, int gameYSize, int** occupancyCheck)
+{
+    char action = wgetch(playWindow);
+	if(action == 'q') { return false; }
+	calculateInputs(action, config, state, playerBird);
+
+	updatePlayerBird(playWindow, state, config, playerBird, starArr, occupancyCheck);
+
+	state->starSpawnTimer -= FRAME_TIME;
+	if(state->starSpawnTimer <= 0)
 	{
-		state->starsSpawnTimer = (rand() % (config->starsMaxSpawnTime - config->starsMinSpawnTimer)) + config->starsMinSpawnTime;
+		state->starSpawnTimer = (rand() % (config->starsMaxSpawnTime - config->starsMinSpawnTime)) + config->starsMinSpawnTime;
 		spawnStar(starArr, mainXLength, occupancyCheck);
 	}
 
-	for(int i = 0; i < starArr->firstFreeIndex; i++)
-	{
-		star* currentStar = starArr->stars[i];
-		if(occupancyCheck[currentStar->y][currentStar->x] == STAR)
-		{
-			occupancyCheck[currentStar->y][currentStar->x] = EMPTY;
-			mvwaddch(playWindow, currentStar->y, currentStar->x, ' ');
-		}
-
-		currentStar->y += currentStar->speed;
-		if(currentStar->y >= gameYSize - 2)
-		{
-			/*int randX = rand() % (mainXLength-2);
-			currentStar->x = randX + 1;
-			currentStar->y = 3;*/
-			deleteStar(starArr, i);
-			continue;
-		}
-		occupancyCheck[currentStar->y][currentStar->x] = STAR;
-		mvwaddch(playWindow, currentStar->y, currentStar->x, '*');
-	}
-
-	for(int i = 0; i < hunterArr->firstFreeIndex; i++)
-	{
-		hunter* currentHunter = hunterArr->hunters[i];
-
-		//if(occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] != PLAYER)
-		//{
-			mvwaddch(playWindow, currentHunter->y, currentHunter->x, ' ');
-		//}
-		if(occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] == HUNTER)
-		{
-			occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] = EMPTY;
-		}	
-
-		currentHunter->x += currentHunter->xDirection * currentHunter->speed;
-		currentHunter->y += currentHunter->yDirection * currentHunter->speed;
-
-		currentHunter->x = boundf(currentHunter->x, 1, mainXLength-2);
-		currentHunter->y = boundf(currentHunter->y, 1, gameYSize-2);
-
-		if(currentHunter->x == 1 || currentHunter->x == mainXLength-2 
-			|| currentHunter->y == 1 || currentHunter->y == gameYSize-2)
-		{
-			if(currentHunter->bouncesLeft <= 0) 
-			{
-				int x = currentHunter->x;
-				int y = currentHunter->y;
-				deleteHunter(hunterArr, i); 
-				mvwaddch(playWindow, y, x,  ' ');
-				continue;
-			}
-			updateHunterDirection(currentHunter, playerBird);
-			currentHunter->bouncesLeft--;
-		}
-
-		bool isInDistance = isInRange(currentHunter->x, currentHunter->y, 
-								(float)currentHunter->xDest,  (float)currentHunter->yDest, 2);
-		if(isInDistance)
-		{
-			//updateHunterDirection(currentHunter, playerBird);
-		}
-
-		//char temp = (int)currentHunter->yDest + '0';
-		//char temp2 = (int)distance + '0';
-		//mvwaddch(playWindow, currentHunter->y-2, currentHunter->x, temp);
-		//mvwaddch(playWindow, currentHunter->y-1, currentHunter->x, distance + '0');
-		mvwaddch(playWindow, (int)currentHunter->y, (int)currentHunter->x, '@');
-		occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] = HUNTER;
-	}
+	updateStars(playWindow, starArr, config, occupancyCheck);
+	updateHunters(playWindow, config, hunterArr, playerBird, occupancyCheck);
 
 	wrefresh(playWindow);
 
-
 	state->frameCounter++;
 	paintStats(statsWindow, playerBird, state, starArr, action);
-
-    clock_t end = clock();
-    int frameTime = (int)(end - start)/(CLOCKS_PER_SEC/1000000);
-	frameTime = 0;
-    usleep((FRAME_TIME * 1000) - frameTime);
 	state->timer -= FRAME_TIME;
 	return true;
 }
@@ -357,31 +364,8 @@ void paintStats(WINDOW* statsWindow, bird* playerBird, gameState* state, starArr
 	wrefresh(statsWindow);
 }
 
-int main(void)
+int** initializeOccupancyMap(int mainXLength, int gameYSize)
 {
-	gameConfig* config = malloc(sizeof(gameConfig));
-	InitializeGameConfig(config, "config.ini");
-
-    WINDOW* parentWindow = initscr();
-    int mainXLength = -1;
-	int mainYLength = -1;
-    getmaxyx(stdscr, mainYLength, mainXLength);
-
-    int gameYSize = 2*mainYLength/3;
-    WINDOW* playWindow = subwin(parentWindow, gameYSize, mainXLength, 0, 0);
-    WINDOW* statsWindow = subwin(parentWindow, mainYLength - gameYSize, mainXLength, gameYSize, 0);
-    
-    noecho();
-	curs_set(0);
-	//cbreak() enable q to quit
-    nodelay(playWindow, true);
-
-	srand(time(NULL));
-    
-	wborder(playWindow, '*', '*', '*', '*', '*', '*', '*', '*');
-    box(statsWindow, '|', '~');
-    refresh();
-
 	int** occupancyCheck = malloc(sizeof(int*) * gameYSize);
 	for(int i = 0; i < gameYSize; i++)
 	{
@@ -398,12 +382,20 @@ int main(void)
 			}
 		}
 	}
+	return occupancyCheck;
+}
 
+bird* initializePlayerBird(int gameYSize, int mainXLength)
+{
 	bird* playerBird = malloc(sizeof(bird));
 	playerBird->y = gameYSize/2;
 	playerBird->x = mainXLength/2;
 	playerBird->hp = 5;
+	return playerBird;
+}
 
+starArray* initializeStarArray()
+{
 	starArray* starArr = malloc(sizeof(starArray));
 
 	starArr->stars = malloc(sizeof(star*) * 5);
@@ -413,7 +405,11 @@ int main(void)
 	}
 	starArr->capacity = 5;
 	starArr->firstFreeIndex = 0;
+	return starArr;
+}
 
+hunterArray* initializeHunterArray()
+{
 	hunterArray* hunterArr = malloc(sizeof(hunterArray));
 
 	hunterArr->hunters = malloc(sizeof(hunter*) * 5);
@@ -423,172 +419,87 @@ int main(void)
 	}
 	hunterArr->capacity = 5;
 	hunterArr->firstFreeIndex = 0;
+	return hunterArr;
+}
 
-	bool quit = false;
-	int frameCounter = 0;
-	int speed = 1;
-	int starsLeft = config->starGoal;
-    //mvwprintw(statsWindow, 1, 2,"%s","Hello Stats");
-    //refresh();
-	time_t startTime = time(0);
-	int timer = 10 * 1000;
-
+gameState* initializeGameState(gameConfig* config)
+{
+	gameState* state = malloc(sizeof(gameState));
+	state->frameCounter = 0;
+	state->playerSpeed = 1;
+	state->starsLeft = config->starGoal;
 	int starMinSpawnTime = config->starsMinSpawnTime * 1000;
 	int starMaxSpawnTime = config->starsMaxSpawnTime * 1000;
-	int starSpawnTimer = (rand() % (starMaxSpawnTime - starMinSpawnTime)) + starMinSpawnTime;
-	for(int i = 0; i < 3; i++)
+	state->starSpawnTimer = (rand() % (starMaxSpawnTime - starMinSpawnTime)) + starMinSpawnTime;
+	state->timer = config->timeAvailable * 1000;
+	return state;
+}
+
+int main(void)
+{
+	gameConfig* config = malloc(sizeof(gameConfig));
+	InitializeGameConfig(config, "config.ini");
+
+    WINDOW* parentWindow = initscr();
+    int mainXLength = -1;
+	int mainYLength = -1;
+    getmaxyx(stdscr, mainYLength, mainXLength);
+
+	if(config->mapSizeX > mainXLength-2)
 	{
-		spawnStar(starArr,mainXLength, occupancyCheck);
+		config->mapSizeX = mainXLength-2;
 	}
+
+    int mainGameYSize = 2*mainYLength/3;
+
+	if(config->mapSizeY > mainGameYSize-2)
+	{
+		config->mapSizeY = mainGameYSize-2;
+	}
+
+    WINDOW* playWindow = subwin(parentWindow ,config->mapSizeY+2, config->mapSizeX+2, 0, 0);
+    WINDOW* statsWindow = subwin(parentWindow, mainYLength - config->mapSizeY+2, config->mapSizeX+2, config->mapSizeY+2, 0);
+    
+    noecho();
+	curs_set(0);
+	//cbreak() enable q to quit
+    nodelay(playWindow, true);
+
+	srand(time(NULL));
+    
+	wborder(playWindow, '*', '*', '*', '*', '*', '*', '*', '*');
+    box(statsWindow, '|', '~');
+    refresh();
+
+	int** occupancyCheck = initializeOccupancyMap(mainXLength, mainGameYSize);
+
+	bird* playerBird = initializePlayerBird(mainGameYSize, mainXLength);
+
+	starArray* starArr = initializeStarArray();
+	hunterArray* hunterArr = initializeHunterArray();
 
 	for(int i = 0; i < 3; i++)
 	{
-		spawnHunter(hunterArr, playerBird, mainXLength, gameYSize, occupancyCheck);
+		spawnHunter(hunterArr, playerBird, config, occupancyCheck);
 	}
 
+	gameState* state = initializeGameState(config);
+
+	bool quit = false;
 	while(!quit)
 	{
-		quit = !gameLoop();
-		// clock_t start = clock();
-        // char action = wgetch(playWindow);
-		// if(action == 'q') { quit = true; }
-		// calculateInputs(action, config, playerBird, &speed);
-
-		// mvwaddch(playWindow, playerBird->y, playerBird->x, ' ');
-		// playerBird->x += playerBird->xDirection * speed;
-		// playerBird->y += playerBird->yDirection * speed;
-
-		// playerBird->x = bound(playerBird->x, 1, mainXLength-2);
-		// playerBird->y = bound(playerBird->y, 1, gameYSize-2);
-
-		// if(playerBird->y == 1 || playerBird->y == gameYSize-2)
-		// {
-		// 	playerBird->yDirection *= -1;
-		// 	//playerBird->hp--;
-		// }
-
-		// if(playerBird->x == 1 || playerBird->x == mainXLength-2)
-		// {
-		// 	playerBird->xDirection *= -1;
-		// 	//playerBird->hp--;
-		// }
-
-		// int currentCell = occupancyCheck[playerBird->y][playerBird->x];
-		// if(currentCell == STAR)
-		// {
-		// 	despawnStarAt(starArr, playerBird->y, playerBird->x, occupancyCheck, playWindow);
-		// 	starsLeft--;
-		// }
-		// if(currentCell == HUNTER)
-		// {
-		// 	playerBird->hp--;
-		// }
-		// mvwaddch(playWindow, playerBird->y, playerBird->x, '%');
-		// occupancyCheck[playerBird->y][playerBird->x] = PLAYER;
-
-		// starSpawnTimer -= FRAME_TIME;
-		// if(starSpawnTimer <= 0)
-		// {
-		// 	starSpawnTimer = (rand() % (starMaxSpawnTime - starMinSpawnTime)) + starMinSpawnTime;
-		// 	spawnStar(starArr, mainXLength, occupancyCheck);
-		// }
-
-		// for(int i = 0; i < starArr->firstFreeIndex; i++)
-		// {
-		// 	star* currentStar = starArr->stars[i];
-		// 	if(occupancyCheck[currentStar->y][currentStar->x] == STAR)
-		// 	{
-		// 		occupancyCheck[currentStar->y][currentStar->x] = EMPTY;
-		// 		mvwaddch(playWindow, currentStar->y, currentStar->x, ' ');
-		// 	}
-
-		// 	currentStar->y += currentStar->speed;
-		// 	if(currentStar->y >= gameYSize - 2)
-		// 	{
-		// 		/*int randX = rand() % (mainXLength-2);
-		// 		currentStar->x = randX + 1;
-		// 		currentStar->y = 3;*/
-		// 		deleteStar(starArr, i);
-		// 		continue;
-		// 	}
-		// 	occupancyCheck[currentStar->y][currentStar->x] = STAR;
-		// 	mvwaddch(playWindow, currentStar->y, currentStar->x, '*');
-		// }
-
-		// for(int i = 0; i < hunterArr->firstFreeIndex; i++)
-		// {
-		// 	hunter* currentHunter = hunterArr->hunters[i];
-
-		// 	//if(occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] != PLAYER)
-		// 	//{
-		// 		mvwaddch(playWindow, currentHunter->y, currentHunter->x, ' ');
-		// 	//}
-		// 	if(occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] == HUNTER)
-		// 	{
-		// 		occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] = EMPTY;
-		// 	}	
-
-		// 	currentHunter->x += currentHunter->xDirection * currentHunter->speed;
-		// 	currentHunter->y += currentHunter->yDirection * currentHunter->speed;
-
-		// 	currentHunter->x = boundf(currentHunter->x, 1, mainXLength-2);
-		// 	currentHunter->y = boundf(currentHunter->y, 1, gameYSize-2);
-
-		// 	if(currentHunter->x == 1 || currentHunter->x == mainXLength-2 
-		// 		|| currentHunter->y == 1 || currentHunter->y == gameYSize-2)
-		// 	{
-		// 		if(currentHunter->bouncesLeft <= 0) 
-		// 		{
-		// 			int x = currentHunter->x;
-		// 			int y = currentHunter->y;
-		// 			deleteHunter(hunterArr, i); 
-		// 			mvwaddch(playWindow, y, x,  ' ');
-		// 			continue;
-		// 		}
-		// 		updateHunterDirection(currentHunter, playerBird);
-		// 		currentHunter->bouncesLeft--;
-		// 	}
-
-		// 	bool isInDistance = isInRange(currentHunter->x, currentHunter->y, 
-		// 							(float)currentHunter->xDest,  (float)currentHunter->yDest, 2);
-		// 	if(isInDistance)
-		// 	{
-		// 		//updateHunterDirection(currentHunter, playerBird);
-		// 	}
-
-		// 	//char temp = (int)currentHunter->yDest + '0';
-		// 	//char temp2 = (int)distance + '0';
-		// 	//mvwaddch(playWindow, currentHunter->y-2, currentHunter->x, temp);
-		// 	//mvwaddch(playWindow, currentHunter->y-1, currentHunter->x, distance + '0');
-		// 	mvwaddch(playWindow, (int)currentHunter->y, (int)currentHunter->x, '@');
-		// 	occupancyCheck[(int)currentHunter->y][(int)currentHunter->x] = HUNTER;
-		// }
-
-		// wrefresh(playWindow);
-
-
-		// frameCounter++;
-		// mvwprintw(statsWindow,1,2,"Current Speed: %d", speed);
-		// mvwprintw(statsWindow,2,2, "Life Force:  %d", playerBird->hp);
-		// mvwprintw(statsWindow,3,2,"Stars Left: %d", starsLeft);
-		// time_t currentTime = time(0);
-		// mvwprintw(statsWindow,4,2,"Time Left: %d", (int)timer/1000);
-
-		// //hunter* test = hunterArr->hunters[0];
-		// //float distance = isInRange(test->x, test->y, (float)test->xDest,  (float)test->yDest, 2);
-		// //mvwprintw(statsWindow,mainYLength-gameYSize-5,2,"Distance: :           ");
-		// //mvwprintw(statsWindow,mainYLength-gameYSize-5,2,"Distance: : %d", (int)distance);
-		// mvwprintw(statsWindow,mainYLength-gameYSize-4,2,"Stars Capacity: %d", starArr->capacity);
-		// mvwprintw(statsWindow,mainYLength-gameYSize-3,2,"Current Action: %d",(int)action);
-		// mvwprintw(statsWindow,mainYLength-gameYSize-2,2,"Frame Count: %d",frameCounter);
-		// wrefresh(statsWindow);
-
-
-        // clock_t end = clock();
-        // int frameTime = (int)(end - start)/(CLOCKS_PER_SEC/1000000);
-		// frameTime = 0;
-        // usleep((FRAME_TIME * 1000) - frameTime);
-		// timer -= FRAME_TIME;
+		clock_t start = clock();
+		quit = !gameLoop(playWindow, 
+			statsWindow, 
+			config, state, 
+			playerBird, 
+			hunterArr, starArr, 
+			mainXLength, mainGameYSize, 
+			occupancyCheck);
+		clock_t end = clock();
+    	int frameTime = (int)(end - start)/(CLOCKS_PER_SEC/1000000);
+		frameTime = 0;
+    	usleep((FRAME_TIME * 1000) - frameTime);
 	}
 
 	getch();

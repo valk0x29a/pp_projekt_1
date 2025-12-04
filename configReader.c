@@ -4,6 +4,8 @@
 
 typedef struct gameConfig
 {
+    int mapSizeX;
+    int mapSizeY;
     int starGoal;
     int starsMinSpawnTime;
     int starsMaxSpawnTime;
@@ -36,6 +38,8 @@ int GetIntValue(char* string)
 
 void SetValue(gameConfig* config, char* name, char* value)
 {
+    if(areStringsSame(name, "map_size_x")) { config->mapSizeX = GetIntValue(value); }
+    if(areStringsSame(name, "map_size_y")) { config->mapSizeY = GetIntValue(value); }
     if(areStringsSame(name, "stars_goal")) { config->starGoal = GetIntValue(value); }
     if(areStringsSame(name, "stars_min_spawn_time")) { config->starsMinSpawnTime = GetIntValue(value); }
     if(areStringsSame(name, "stars_max_spawn_time")) { config->starsMaxSpawnTime = GetIntValue(value); }
